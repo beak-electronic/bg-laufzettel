@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="BG Laufzettel" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c1c1e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="description" content="Baugruppenlaufzettel erzeugen und ausfüllen – offline PWA" />
+  <link rel="manifest" href="manifest.webmanifest?v=67" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" type="image/png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" type="image/png" />
+  <link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167.png" type="image/png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="apple-touch-icon-152.png" type="image/png" />
+  <link rel="apple-touch-icon" sizes="120x120" href="apple-touch-icon-120.png" type="image/png" />
+  <link rel="apple-touch-icon-precomposed" href="apple-touch-icon-precomposed.png" type="image/png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=67" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=67" />
+  <link rel="stylesheet" href="css/app.css?v=67" />
+  <title>BG Laufzettel</title>
+</head>
+<body>
+  <script>
+    (function () {
+      try {
+        var standalone = window.navigator.standalone === true
+          || window.matchMedia('(display-mode: standalone)').matches
+          || window.matchMedia('(display-mode: window-controls-overlay)').matches;
+        if (standalone) document.documentElement.setAttribute('data-standalone', '1');
+      } catch (e) {}
+    })();
+  </script>
+  <div class="ios-pwa-status-strip" aria-hidden="true"></div>
+  <!-- HOME: Generator + open PDF -->
+  <div id="home" class="home">
+    <header class="app-topbar">
+      <h1 class="app-heading">BG Laufzettel</h1>
+      <span class="app-beak" aria-label="BEAK"><span class="beak-letters">B&nbsp;E&nbsp;A&nbsp;K</span><span class="beak-dot">•</span></span>
+    </header>
+    <div class="home-scroll">
+    <div class="wrap">
+<h2 class="section-title">Generieren</h2>
+      <p class="example" id="example-link" title="Beispiel übernehmen">
+        <span class="example-label">Beispiel:</span>
+        <span class="example-values">15x 100.124 BG Endstufe 2718 V2</span>
+      </p>
+
+      <div class="pill" role="group" aria-label="Auftragseingabe">
+        <button type="button" class="pill-btn" id="btn-gen-settings" aria-label="Einstellungen" title="Einstellungen">
+          <img class="pill-icon" src="icons/settings_btn.png?v=67" alt="" width="40" height="40" draggable="false" />
+        </button>
+        <input
+          id="job-input"
+          type="text"
+          enterkeyhint="send"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder=""
+          aria-label="Auftragstext"
+        />
+        <button type="button" class="pill-btn send" id="btn-send" aria-label="Senden" title="Senden">
+          <img class="pill-icon send-icon" src="icons/send_btn.png?v=67" alt="" width="40" height="40" draggable="false" />
+        </button>
+      </div>
+
+      <div class="job-preview" id="job-preview" aria-live="polite">
+        <p class="job-preview-line" id="preview-startnummer">Startnummer: B00001</p>
+        <p class="job-preview-line" id="preview-sachbearbeiter">Sachbearbeiter Lager: Daniel</p>
+      </div>
+
+      <button type="button" class="jobs-header" id="jobs-header">▸ Aufträge</button>
+      <div class="jobs-panel hidden" id="jobs-panel">
+        <ul id="jobs-list"></ul>
+      </div>
+
+      <p class="status" id="status" role="status">Bereit</p>
+
+      <section class="open-section" aria-labelledby="open-heading">
+        <h2 id="open-heading" class="section-title open-title">Öffnen</h2>
+        <p class="open-copy">
+          Wähle einen Baugruppenlaufzettel aus und drücke eine Zelle an, um Initialen und das heutige Datum zu stempeln.<br>
+          Erneutes tippen löscht den Stempel wieder.<br>
+          Tippen auf die Kopfzeile stempelt die komplette Reihe.<br>
+          Apple Pencil für Handschrift unterstützt.
+        </p>
+        <button type="button" class="btn btn-prominent" id="btn-pdf-open">BG Laufzettel öffnen</button>
+      </section>
+
+      <section class="scan-section" aria-labelledby="scan-heading">
+        <h2 id="scan-heading" class="section-title">Scannen</h2>
+        <p class="open-copy scan-intro">
+          DataMatrix- oder Barcode-Etikett scannen – der passende Baugruppenlaufzettel öffnet sich aus dem Katalog.
+        </p>
+        <button type="button" class="btn btn-prominent" id="btn-go-scan">Scannen</button>
+      </section>
+      <p class="home-footer">
+        Version 1.4<br />
+        © BEAK electronic engineering GmbH &amp; Co. KG
+      </p>
+    </div>
+    </div>
+  </div>
+
+
+  <!-- SCAN: Kamera, PDF aktualisieren -->
+  <div id="scan-view" class="home scan-view hidden">
+    <header class="app-topbar scan-topbar">
+      <button type="button" class="btn btn-text btn-scan-back" id="btn-scan-back" aria-label="Zurück">Zurück</button>
+      <h1 class="app-heading">Scannen</h1>
+      <span class="app-beak" aria-label="BEAK"><span class="beak-letters">B&nbsp;E&nbsp;A&nbsp;K</span><span class="beak-dot">•</span></span>
+    </header>
+    <div class="home-scroll">
+    <div class="wrap">
+      <div id="pdf-refresh-banner" class="pdf-refresh-banner hidden" role="region" aria-label="PDFs aktualisieren">
+        <p class="pdf-refresh-text">Neue Laufzettel? Tippe auf PDFs aktualisieren.<br />
+          Ordner wählen → eine PDF antippen → Alles auswählen → Öffnen.</p>
+        <div class="pdf-refresh-actions">
+          <button type="button" class="btn btn-prominent" id="btn-banner-refresh-pdfs">PDFs aktualisieren</button>
+          <button type="button" class="btn btn-secondary" id="btn-banner-dismiss">Später</button>
+        </div>
+      </div>
+
+      <div class="scan-actions">
+        <button type="button" class="btn btn-prominent" id="btn-scan-start">Kamera starten</button>
+        <button type="button" class="btn btn-secondary hidden" id="btn-scan-stop">Scan stoppen</button>
+      </div>
+
+      <div id="scan-panel" class="scan-panel hidden">
+        <div class="scan-frame">
+          <video id="scan-video" playsinline muted></video>
+          <div class="scan-reticle" data-mode="datamatrix" aria-hidden="true"></div>
+        </div>
+        <div class="scan-mode-toggle" role="group" aria-label="Rahmen / Code-Typ">
+          <button type="button" class="scan-mode-btn is-active" data-scan-mode="datamatrix" id="scan-mode-dm">DataMatrix</button>
+          <button type="button" class="scan-mode-btn" data-scan-mode="barcode" id="scan-mode-bc">Barcode</button>
+        </div>
+        <p class="hint scan-mode-hint" id="scan-mode-hint">Kleinen DataMatrix-Code in den Rahmen halten.</p>
+      </div>
+
+      <div id="result-box" class="result-box hidden" aria-live="polite">
+        <p class="result-line"><span class="muted">Code:</span> <span id="result-payload">—</span></p>
+        <p class="result-line"><span class="muted">Etikett:</span> <strong id="result-serial">—</strong></p>
+      </div>
+
+      <div id="not-found-box" class="not-found-box hidden" role="alert">
+        <p>
+          Kein Laufzettel für Etikett
+          <strong id="not-found-sn">—</strong> gefunden
+          (Katalog muss Etikettnummer im Dateinamen oder PDF-Inhalt enthalten).
+        </p>
+        <button type="button" class="btn btn-prominent" id="btn-not-found-open">BG Laufzettel öffnen</button>
+      </div>
+
+      <p class="status" id="scan-status" role="status">Bereit</p>
+    </div>
+    </div>
+  </div>
+
+  <!-- FILL MODE: toolbar + viewer (hidden until PDF open) -->
+  <div id="fill-mode" class="fill-mode hidden">
+    <header class="toolbar" id="fill-toolbar">
+      <button type="button" class="btn btn-stamp-settings" id="btn-fill-settings" aria-label="Einstellungen" title="Einstellungen">
+        <canvas id="fill-settings-stamp" class="stamp-settings-canvas" width="72" height="72" aria-hidden="true"></canvas>
+        <span class="stamp-settings-gear" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="12" height="12" focusable="false">
+            <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.77 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.12.22.37.3.6.22l2.39-.96c.5.39 1.04.71 1.63.94l.36 2.54c.05.24.25.42.49.42h3.84c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.55 1.63-.94l2.39.96c.23.08.48 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>
+          </svg>
+        </span>
+      </button>
+      <div class="toolbar-center">
+        <button type="button" class="btn btn-text" id="btn-fill-close" aria-label="Schließen">Schließen</button>
+      </div>
+      <div class="toolbar-right">
+        <button type="button" class="btn btn-icon hidden" id="btn-ink-undo" aria-label="Rückgängig" title="Rückgängig">
+          <svg class="toolbar-svg" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C20.88 11.06 17.01 8 12.5 8z"/>
+          </svg>
+        </button>
+        <button type="button" class="btn btn-prominent hidden" id="btn-save" aria-label="Sichern">Sichern</button>
+      </div>
+    </header>
+    <main id="main-fill">
+      <section id="viewer" class="viewer" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <input type="file" id="file-input" accept="application/pdf,.pdf" hidden />
+  <input type="file" id="pdf-catalog-input" accept="application/pdf,.pdf" multiple hidden />
+
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <!-- Generator settings (home gear) -->
+  <dialog id="gen-settings-dialog" class="settings-dialog">
+    <form method="dialog" id="gen-settings-form">
+      <header class="settings-header">
+        <h2>Einstellungen</h2>
+        <button type="button" class="btn-done" id="btn-gen-settings-done" value="done">Fertig</button>
+      </header>
+      <div class="settings-body">
+        <section class="settings-section cardish">
+          <h3>Etikett</h3>
+          <label class="field-label" for="settings-buchstabe">Etikett Buchstabe</label>
+          <input type="text" id="settings-buchstabe" maxlength="1" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="B" />
+          <label class="field-label" for="settings-startnummer">Etikett Startnummer</label>
+          <input type="text" id="settings-startnummer" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="00001" />
+          <div class="toggle-row">
+            <label for="settings-auto-increment">Automatisch weiterzählen</label>
+            <input type="checkbox" id="settings-auto-increment" checked />
+          </div>
+          <p class="hint">Nach erfolgreichem Speichern im Stempelmodus wird die Startnummer um die Stückzahl erhöht.</p>
+        </section>
+        <section class="settings-section cardish">
+          <h3>Sachbearbeiter</h3>
+          <label class="field-label" for="settings-sachbearbeiter">Sachbearbeiter Lager</label>
+          <input type="text" id="settings-sachbearbeiter" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Daniel" />
+        </section>
+        
+        <section class="settings-section cardish" id="settings-pdf-catalog">
+          <h3>PDF-Katalog (Scannen)</h3>
+          <p class="hint" id="settings-catalog-platform-hint">
+            Für Auto-Öffnen nach dem Scan: PDFs in den Katalog laden.
+            Am Desktop (Chrome/Edge) kann ein Ordner verknüpft werden.
+            Am iPad PDFs aus der Dateien-App wählen – Inhalt (Etikettnummern) wird indexiert.
+          </p>
+
+          <div id="settings-folder-block" class="settings-catalog-block">
+            <p class="hint" id="settings-folder-label">Kein Ordner gewählt.</p>
+            <p class="hint">Dateinamen mit Etikett (z.&nbsp;B. <code>B00001.pdf</code>) oder Match über PDF-Inhalt nach Import.</p>
+            <div class="settings-btn-row">
+              <button type="button" class="btn btn-secondary" id="btn-pick-folder">Ordner wählen</button>
+              <button type="button" class="btn btn-secondary" id="btn-clear-folder">Ordner lösen</button>
+            </div>
+          </div>
+
+          <div id="settings-idb-block" class="settings-catalog-block">
+            <p class="hint" id="settings-idb-label">Keine PDFs im Katalog gespeichert.</p>
+            <p class="hint">Mehrere PDFs aus Dateien wählen. Dateiname und PDF-Text (Etikettnummern wie B00001) werden indexiert.</p>
+            <div class="settings-btn-row">
+              <button type="button" class="btn btn-secondary" id="btn-refresh-pdfs">PDFs aus Dateien wählen / aktualisieren</button>
+              <button type="button" class="btn btn-secondary" id="btn-clear-idb-catalog">Gespeicherte PDFs löschen</button>
+            </div>
+            <div class="toggle-row" style="margin-top:10px">
+              <label for="settings-auto-refresh-prompt">Beim Start an Aktualisieren erinnern</label>
+              <input type="checkbox" id="settings-auto-refresh-prompt" checked />
+            </div>
+          </div>
+        </section>
+<section class="settings-section cardish">
+          <h3>PDF speichern</h3>
+          <label class="field-label" for="settings-save-mode">Speichern-Art</label>
+          <select id="settings-save-mode">
+            <option value="auto">Automatisch (iPad: Teilen, Mac: Datei speichern)</option>
+            <option value="share">Immer Teilen-Menü</option>
+            <option value="download">Immer Datei speichern / Download</option>
+          </select>
+          <p class="hint">Am Mac: „Datei speichern“ legt die PDF im Download-Ordner ab bzw. öffnet den Speicher-Dialog. Am iPad bleibt Teilen mit „In Dateien sichern“ sinnvoll.</p>
+          <div class="toggle-row">
+            <label for="settings-autoshare">Nach Erzeugen automatisch teilen/speichern</label>
+            <input type="checkbox" id="settings-autoshare" />
+          </div>
+          <p class="hint">Nur relevant, wenn die PDF nicht im Stempelmodus geöffnet wird. Standard: aus (Stempelmodus öffnet zuerst).</p>
+        </section>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Fill settings (only used when PDF open) -->
+  <dialog id="fill-settings-dialog" class="settings-dialog fill-settings-dialog">
+    <form method="dialog" id="fill-settings-form">
+      <header class="settings-header">
+        <h2>Einstellungen</h2>
+        <button type="submit" class="btn btn-text btn-primary-text btn-done" value="done">Fertig</button>
+      </header>
+
+      <div class="settings-scroll">
+      <section class="settings-section">
+        <h3>Initialen</h3>
+        <input type="text" id="fill-settings-initials" maxlength="12" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="z. B. SG" />
+        <p class="hint">Beliebige Buchstaben. Werden unter dem Datum in die Zelle geschrieben.</p>
+      </section>
+
+      <section class="settings-section">
+        <h3>Datum (nur dieses Dokument)</h3>
+        <input type="text" id="fill-settings-date" maxlength="10" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="dd.MM." inputmode="numeric" />
+        <p class="hint" id="fill-settings-date-hint">Leer = heutiges Datum. Beim Schließen des Dokuments wird die Überschreibung verworfen.</p>
+        <button type="button" class="btn btn-secondary" id="btn-fill-reset-date">Auf heute zurücksetzen</button>
+      </section>
+
+      <section class="settings-section">
+        <h3>Farbe für Datum &amp; Initialen</h3>
+        <div class="color-row">
+          <span>Aktuelle Farbe</span>
+          <button type="button" id="btn-fill-cycle-color" class="color-swatch large" aria-label="Farbe wechseln"></button>
+        </div>
+        <p class="hint">Tippe den Kreis, um durch 8 dunkle Töne zu wechseln. Die Farbe bleibt gespeichert.</p>
+        <div class="color-grid" id="fill-color-grid" role="listbox" aria-label="Farbauswahl"></div>
+      </section>
+
+      <section class="settings-section">
+        <div class="toggle-row">
+          <label for="fill-settings-erase-mode">Zellen löschen</label>
+          <input type="checkbox" id="fill-settings-erase-mode" />
+        </div>
+        <p class="hint">Aktives Tippen setzt nur weißen Hintergrund (zum Überdecken falscher Stempel). Gilt nur für dieses Dokument.</p>
+      </section>
+
+      <section class="settings-section">
+        <h3>Letzte Spalte</h3>
+        <div class="toggle-row">
+          <label for="fill-settings-last-col-date-only">„Baugruppe gebucht“ nur Datum</label>
+          <input type="checkbox" id="fill-settings-last-col-date-only" />
+        </div>
+        <p class="hint">Ein: letzte Spalte stempelt nur das Datum (ohne Initialen). Aus: Datum + Initialen wie in den anderen Spalten.</p>
+      </section>
+
+      <section class="settings-section">
+        <h3>Bestückung SMD &amp; Reflow</h3>
+        <div class="toggle-row">
+          <label for="fill-settings-smd-stamp-enabled">Separater Stempel für Bestückung SMD &amp; Reflow</label>
+          <input type="checkbox" id="fill-settings-smd-stamp-enabled" />
+        </div>
+        <p class="hint">Ein: eigene Initialen und Farbe nur für diese Spalte. Aus: normaler Stempel wie in den anderen Spalten.</p>
+        <div id="fill-settings-smd-fields" class="smd-stamp-fields">
+          <label class="field-label" for="fill-settings-smd-initials">Initialen (SMD)</label>
+          <input type="text" id="fill-settings-smd-initials" maxlength="12" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="z. B. DK" />
+          <div class="color-row" style="margin-top: 12px;">
+            <span>Farbe (SMD)</span>
+            <button type="button" id="btn-fill-cycle-smd-color" class="color-swatch large" aria-label="SMD-Farbe wechseln"></button>
+          </div>
+          <p class="hint">Tippe den Kreis oder eine Farbe unten, um den SMD-Stempel zu ändern.</p>
+          <div class="color-grid" id="fill-smd-color-grid" role="listbox" aria-label="SMD-Farbauswahl"></div>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3>Apple Pencil</h3>
+        <p class="hint">Apple Pencil: frei zeichnen / unterschreiben. Finger: Stempel.</p>
+      </section>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="vendor/pdf-lib.min.js?v=67"></script>
+  <script src="vendor/fontkit.umd.min.js?v=67"></script>
+  <script src="vendor/zxing-library.min.js?v=67"></script>
+  <script type="module" src="js/app.js?v=67"></script>
+</body>
+</html>
