@@ -33,6 +33,7 @@ import {
   releaseAllCameras,
   releaseAllCamerasAsync,
 } from './scan.js';
+import { getPdfFolderHandle } from './catalog.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
 
@@ -328,10 +329,19 @@ export async function openFile(file, fileHandle = null, opts = {}) {
   }
 }
 
+async function getLinkedPdfFolder() {
+  try {
+    const dir = await getPdfFolderHandle();
+    return dir && dir.kind === 'directory' ? dir : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 export async function pickAndOpen() {
   if (typeof window.showOpenFilePicker === 'function') {
     try {
-      const [handle] = await window.showOpenFilePicker({
+      const openOpts = {
         multiple: false,
         types: [
           {
@@ -339,7 +349,16 @@ export async function pickAndOpen() {
             accept: { 'application/pdf': ['.pdf'] },
           },
         ],
-      });
+      };
+      // Start in the PDF folder linked in Einstellungen (Windows Chrome/Edge).
+      const startDir = await getLinkedPdfFolder();
+      let handle;
+      try {
+        [handle] = await window.showOpenFilePicker(startDir ? { ...openOpts, startIn: startDir } : openOpts);
+      } catch (e) {
+        if ((e && e.name === 'AbortError') || !startDir) throw e;
+        [handle] = await window.showOpenFilePicker(openOpts);
+      }
       // Prefer readwrite so Speichern can overwrite the same file.
       try {
         if (handle.requestPermission) {
@@ -1713,10 +1732,18 @@ async function saveDocument() {
     if (preferDownloadSave()) {
       if (window.showSaveFilePicker) {
         try {
-          const handle = await window.showSaveFilePicker({
+          const saveOpts = {
             suggestedName: name,
             types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }],
-          });
+          };
+          const saveDir = await getLinkedPdfFolder();
+          let handle;
+          try {
+            handle = await window.showSaveFilePicker(saveDir ? { ...saveOpts, startIn: saveDir } : saveOpts);
+          } catch (e) {
+            if ((e && e.name === 'AbortError') || !saveDir) throw e;
+            handle = await window.showSaveFilePicker(saveOpts);
+          }
           const writable = await handle.createWritable();
           await writable.write(blob);
           await writable.close();

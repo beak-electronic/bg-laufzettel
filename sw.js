@@ -1,5 +1,5 @@
 /* BG Laufzettel Generator – offline app shell (generate + fill + scan) */
-const CACHE = 'bg-laufzettel-generator-v67';
+const CACHE = 'bg-laufzettel-generator-v68';
 const ASSETS = [
   './',
   './index.html',

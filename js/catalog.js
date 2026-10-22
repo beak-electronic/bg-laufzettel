@@ -241,7 +241,16 @@ export async function pickPdfFolder() {
   if (!supportsDirectoryPicker()) {
     throw new Error("Ordnerauswahl wird von diesem Browser nicht unterstützt.");
   }
-  const handle = await window.showDirectoryPicker({ mode: "read" });
+  const current = await getPdfFolderHandle();
+  let handle;
+  try {
+    handle = await window.showDirectoryPicker(
+      current && current.kind === "directory" ? { mode: "read", startIn: current } : { mode: "read" }
+    );
+  } catch (e) {
+    if ((e && e.name === "AbortError") || !current) throw e;
+    handle = await window.showDirectoryPicker({ mode: "read" });
+  }
   await savePdfFolderHandle(handle);
   await reindexPdfFolder();
   return handle;
