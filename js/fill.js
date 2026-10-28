@@ -10,6 +10,7 @@ import {
   PAGE_HEIGHT,
   INSET,
   FILL_WHITE,
+  BAUG_FIELD,
 } from './grid.js';
 import {
   loadSettings,
@@ -68,6 +69,14 @@ const state = {
   undoStack: [],
   /** @type {{pageIndex:number,stroke:object,pointerId:number}|null} */
   activeInk: null,
+  /** Detected Baugruppenbezeichnung from the opened PDF (page 1). */
+  baugOriginal: '',
+  /**
+   * Session override for Baugruppenbezeichnung (white cover + new text on save).
+   * null = no edit this session.
+   * @type {{ text: string }|null}
+   */
+  baugEdit: null,
 };
 
 const el = {
@@ -97,6 +106,12 @@ const el = {
   cycleSmdColor: document.getElementById('btn-fill-cycle-smd-color'),
   smdColorGrid: document.getElementById('fill-smd-color-grid'),
   settingsForm: document.getElementById('fill-settings-form'),
+  baugDialog: document.getElementById('baug-edit-dialog'),
+  baugInput: document.getElementById('baug-edit-input'),
+  baugTitle: document.getElementById('baug-edit-title'),
+  baugHint: document.getElementById('baug-edit-hint'),
+  baugOk: document.getElementById('btn-baug-edit-ok'),
+  baugCancel: document.getElementById('btn-baug-edit-cancel'),
 };
 
 let toastTimer = 0;
@@ -240,6 +255,8 @@ function clearDocument() {
   state.lastInkPage = null;
   state.activeInk = null;
   state.undoStack = [];
+  state.baugOriginal = '';
+  state.baugEdit = null;
   state.settings.dateOverride = null;
   el.viewer.innerHTML = '';
   setDocumentUI(false);
@@ -260,6 +277,264 @@ function parseFilledFromKeywords(keywords) {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+
+/* ---------- Baugruppenbezeichnung edit (optional white-cover + rewrite) ---------- */
+
+let baugEntryResolver = null;
+
+function baugFieldCell() {
+  return {
+    x0: BAUG_FIELD.x0,
+    y0: BAUG_FIELD.y0,
+    x1: BAUG_FIELD.x1,
+    y1: BAUG_FIELD.y1,
+    col: -1,
+    row: -1,
+  };
+}
+
+/** White cover slightly inset so printed cell borders stay visible. */
+function baugCoverRect() {
+  const i = BAUG_FIELD.coverInset;
+  return {
+    x0: BAUG_FIELD.x0 + i,
+    y0: BAUG_FIELD.y0 + i,
+    x1: BAUG_FIELD.x1 - i,
+    y1: BAUG_FIELD.y1 - i,
+  };
+}
+
+function currentBaugText() {
+  if (state.baugEdit && typeof state.baugEdit.text === 'string') return state.baugEdit.text;
+  return state.baugOriginal || '';
+}
+
+/**
+ * Locate Baugruppenbezeichnung value text via pdf.js text positions.
+ * Prefers items whose center lies inside the known value cell; falls back to
+ * the longest non-label string near that band (external PDFs).
+ */
+async function detectBaugruppenbezeichnung(pdf) {
+  try {
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 1 });
+    const pageH = viewport.height;
+    const content = await page.getTextContent();
+    const f = BAUG_FIELD;
+    const pad = 2;
+    /** @type {{str:string,x:number,yTop:number,w:number}[]} */
+    const inCell = [];
+    /** @type {{str:string,x:number,yTop:number,w:number}[]} */
+    const nearBand = [];
+    for (const item of content.items || []) {
+      const str = String(item.str || '').trim();
+      if (!str) continue;
+      const t = item.transform;
+      if (!t || t.length < 6) continue;
+      const x = t[4];
+      const yBl = t[5];
+      const yTop = pageH - yBl;
+      const w = item.width || 0;
+      const h = item.height || Math.abs(t[3]) || 10;
+      const cx = x + w / 2;
+      const cy = yTop - h / 2;
+      const entry = { str, x, yTop, w };
+      if (cx >= f.x0 - pad && cx <= f.x1 + pad && cy >= f.y0 - pad && cy <= f.y1 + pad) {
+        inCell.push(entry);
+      } else if (
+        cy >= f.y0 - 8 &&
+        cy <= f.y1 + 8 &&
+        x >= f.x0 - 20 &&
+        x <= f.x1 + 20 &&
+        !/^(Baugruppen|bezeichnung|Datum|Stückzahl|Sachbearbeiter|pro|Auftrag|Lager)$/i.test(str)
+      ) {
+        nearBand.push(entry);
+      }
+    }
+    const pick = (arr) => {
+      if (!arr.length) return '';
+      // Join left-to-right fragments in the cell (some PDFs split the name).
+      arr.sort((a, b) => a.x - b.x || a.yTop - b.yTop);
+      const joined = arr.map((a) => a.str).join(' ').replace(/\s+/g, ' ').trim();
+      // Prefer a single longest token if join looks like label noise.
+      if (/bezeichnung/i.test(joined) && arr.length > 1) {
+        const best = arr.slice().sort((a, b) => b.str.length - a.str.length)[0];
+        if (!/bezeichnung/i.test(best.str)) return best.str;
+      }
+      return joined;
+    };
+    let text = pick(inCell);
+    if (!text) text = pick(nearBand);
+    // Drop label-only hits.
+    if (/^Baugruppen[\u2010\-]?bezeichnung$/i.test(text)) return '';
+    return text;
+  } catch (err) {
+    console.warn('detectBaugruppenbezeichnung failed', err);
+    return '';
+  }
+}
+
+function closeBaugEditDialog(result) {
+  const dlg = el.baugDialog;
+  if (dlg) {
+    try {
+      if (typeof dlg.close === 'function') dlg.close();
+      else dlg.removeAttribute('open');
+    } catch (_) {
+      dlg.removeAttribute('open');
+    }
+  }
+  const r = baugEntryResolver;
+  baugEntryResolver = null;
+  if (r) r(result);
+}
+
+/**
+ * @param {{initial?:string}} opts
+ * @returns {Promise<string|null>} null = cancelled
+ */
+function promptBaugEdit(opts = {}) {
+  return new Promise((resolve) => {
+    baugEntryResolver = resolve;
+    const dlg = el.baugDialog;
+    if (!dlg || !el.baugInput) {
+      const fallback = window.prompt('Baugruppenbezeichnung', opts.initial || '');
+      resolve(fallback == null ? null : fallback);
+      return;
+    }
+    if (el.baugTitle) el.baugTitle.textContent = 'Baugruppenbezeichnung ändern';
+    if (el.baugHint) {
+      el.baugHint.textContent =
+        'Beim Sichern wird der alte Text weiß überdeckt und der neue geschrieben.';
+    }
+    el.baugInput.value = opts.initial || '';
+    if (typeof dlg.showModal === 'function') dlg.showModal();
+    else dlg.setAttribute('open', '');
+    setTimeout(() => {
+      try {
+        el.baugInput.focus();
+        el.baugInput.select();
+      } catch (_) {}
+    }, 50);
+  });
+}
+
+async function onBaugFieldTap() {
+  const initial = currentBaugText();
+  const result = await promptBaugEdit({ initial });
+  if (result == null) return; // cancelled
+  const next = String(result).trim();
+  const before = state.baugEdit ? { ...state.baugEdit } : null;
+  const original = state.baugOriginal || '';
+  if (next === original) {
+    // Same as printed → drop session override
+    if (!state.baugEdit) return;
+    state.baugEdit = null;
+  } else {
+    state.baugEdit = { text: next };
+  }
+  pushUndo({ kind: 'baug', before });
+  // Preview on every page (meta field is repeated per page).
+  el.viewer.querySelectorAll('.page-wrap').forEach((wrap) => {
+    const pw = Number(wrap.dataset.pageWidth) || PAGE_WIDTH;
+    const ph = Number(wrap.dataset.pageHeight) || PAGE_HEIGHT;
+    drawPageOverlay(wrap, pw, ph);
+  });
+  updateInkUndoButton();
+  showToast(state.baugEdit ? 'Baugruppenbezeichnung geändert — bitte Sichern' : 'Änderung verworfen');
+}
+
+function drawBaugEditPreview(ctx, scaleX, scaleY) {
+  if (!state.baugEdit) return;
+  const cover = baugCoverRect();
+  const x = cover.x0 * scaleX;
+  const y = cover.y0 * scaleY;
+  const w = (cover.x1 - cover.x0) * scaleX;
+  const h = (cover.y1 - cover.y0) * scaleY;
+  ctx.save();
+  ctx.fillStyle = `rgb(${FILL_WHITE.r},${FILL_WHITE.g},${FILL_WHITE.b})`;
+  ctx.fillRect(x, y, w, h);
+  const text = state.baugEdit.text || '';
+  if (text) {
+    const fontPt = BAUG_FIELD.fontSize;
+    // Canvas uses CSS px ≈ PDF pt at scale 1; scale font with scaleY for aspect.
+    const fontPx = fontPt * scaleY;
+    ctx.fillStyle = '#000000';
+    ctx.font = `bold ${fontPx}px Calibri, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const tx = (BAUG_FIELD.x0 + BAUG_FIELD.padX) * scaleX;
+    const ty = ((BAUG_FIELD.y0 + BAUG_FIELD.y1) / 2) * scaleY;
+    const maxW = Math.max(4, (BAUG_FIELD.x1 - BAUG_FIELD.x0 - BAUG_FIELD.padX - 4) * scaleX);
+    ctx.fillText(text, tx, ty, maxW);
+  }
+  ctx.restore();
+}
+
+function appendBaugHitTarget(hit, crop, pageIndex) {
+  const cell = baugFieldCell();
+  const pct = cellCssPercentInCrop(cell, crop);
+  // Full-field hit (optional edit).
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = state.baugEdit ? 'hit-cell hit-baug edited' : 'hit-cell hit-baug';
+  btn.setAttribute('aria-label', 'Baugruppenbezeichnung ändern');
+  btn.title = 'Baugruppenbezeichnung ändern';
+  btn.style.left = `${pct.left}%`;
+  btn.style.top = `${pct.top}%`;
+  btn.style.width = `${pct.width}%`;
+  btn.style.height = `${pct.height}%`;
+  btn.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'pen' || isPenPointer(e)) {
+      markPenStampSuppress();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+  btn.addEventListener('click', (e) => {
+    if (shouldIgnoreStampClick(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    onBaugFieldTap();
+  });
+  hit.appendChild(btn);
+
+  // Small pencil affordance at the right edge (discoverable, optional).
+  if (pageIndex === 0) {
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'baug-edit-btn';
+    edit.setAttribute('aria-label', 'Baugruppenbezeichnung bearbeiten');
+    edit.title = 'Baugruppenbezeichnung bearbeiten';
+    const btnW = 5.6; // % of crop width (rectangular, like other buttons)
+    const btnH = Math.min(pct.height * 0.85, 4.2);
+    // Square button: height in %, width follows via aspect-ratio; anchor right edge.
+    edit.style.right = `${100 - (pct.left + pct.width) + 0.3}%`;
+    edit.style.top = `${pct.top + (pct.height - btnH) / 2}%`;
+    edit.style.height = `${btnH}%`;
+    edit.style.width = 'auto';
+    edit.style.aspectRatio = '1 / 1';
+    edit.innerHTML =
+      '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/></svg>';
+    edit.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'pen' || isPenPointer(e)) {
+        markPenStampSuppress();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+    edit.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (shouldIgnoreStampClick(e)) return;
+      onBaugFieldTap();
+    });
+    hit.appendChild(edit);
+  }
 }
 
 /**
@@ -292,6 +567,8 @@ export async function openFile(file, fileHandle = null, opts = {}) {
     state.lastInkPage = null;
     state.activeInk = null;
     state.undoStack = [];
+    state.baugOriginal = '';
+    state.baugEdit = null;
     state.settings.dateOverride = null;
 
     // Restore keys written by a previous Speichern of this PWA.
@@ -316,6 +593,9 @@ export async function openFile(file, fileHandle = null, opts = {}) {
     } catch (_) {
       /* ignore */
     }
+
+    state.baugOriginal = await detectBaugruppenbezeichnung(pdf);
+    state.baugEdit = null;
 
     setDocumentUI(true);
     // Wait for fill-mode layout so viewer width (and Pencil mapping) is correct.
@@ -896,6 +1176,13 @@ function undoLastAction() {
   } else if (entry.kind === 'cells') {
     restoreKeySnapshot(entry.before);
     redrawPage(entry.pageIndex);
+  } else if (entry.kind === 'baug') {
+    state.baugEdit = entry.before ? { ...entry.before } : null;
+    el.viewer.querySelectorAll('.page-wrap').forEach((wrap) => {
+      const pw = Number(wrap.dataset.pageWidth) || PAGE_WIDTH;
+      const ph = Number(wrap.dataset.pageHeight) || PAGE_HEIGHT;
+      drawPageOverlay(wrap, pw, ph);
+    });
   }
   updateInkUndoButton();
 }
@@ -1013,6 +1300,9 @@ function drawPageOverlay(wrap, pageWidth, pageHeight) {
 
   hit.innerHTML = '';
 
+  // Optional Baugruppenbezeichnung rewrite (white cover + new text under stamp layer).
+  drawBaugEditPreview(ctx, scaleX, scaleY);
+
   for (const cell of emptyCells) {
     const key = cellKey(pageIndex, cell.col, cell.row);
     const stamp = state.stamps.get(key);
@@ -1105,6 +1395,8 @@ function drawPageOverlay(wrap, pageWidth, pageHeight) {
     });
     hit.appendChild(btn);
   }
+
+  appendBaugHitTarget(hit, crop, pageIndex);
 }
 
 /**
@@ -1546,10 +1838,72 @@ async function saveDocument() {
   try {
     showToast('PDF wird gespeichert…');
     const pdfDoc = await PDFDocument.load(state.pdfBytes, { ignoreEncryption: true });
+    if (typeof fontkit !== 'undefined') {
+      try {
+        pdfDoc.registerFontkit(fontkit);
+      } catch (_) {
+        /* already registered or unavailable */
+      }
+    }
     // Helvetica kept only as fallback if PNG embed fails.
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const pages = pdfDoc.getPages();
+
+    // Optional Baugruppenbezeichnung rewrite: white cover (inset) + Calibri Bold text.
+    if (state.baugEdit && typeof state.baugEdit.text === 'string') {
+      let baugFont = helveticaBold;
+      try {
+        const boldBuf = await fetch(new URL('../fonts/Calibri-Bold.subset.ttf', import.meta.url)).then((r) => {
+          if (!r.ok) throw new Error('font fetch failed');
+          return r.arrayBuffer();
+        });
+        baugFont = await pdfDoc.embedFont(boldBuf);
+      } catch (err) {
+        console.warn('Calibri Bold for Baugruppe unavailable, using HelveticaBold', err);
+      }
+      const cover = baugCoverRect();
+      const text = state.baugEdit.text;
+      const size = BAUG_FIELD.fontSize;
+      // Approximate vertical center like pdf.js drawTextInBox (ascent/descent).
+      let ascent = 0.92;
+      let descent = 0.25;
+      try {
+        const f = baugFont?.embedder?.font;
+        if (f && f.unitsPerEm) {
+          ascent = f.ascent / f.unitsPerEm;
+          descent = Math.abs(f.descent) / f.unitsPerEm;
+        }
+      } catch (_) {}
+      for (const page of pages) {
+        const { height: pageHeight } = page.getSize();
+        const mid = (BAUG_FIELD.y0 + BAUG_FIELD.y1) / 2;
+        page.drawRectangle({
+          x: cover.x0,
+          y: pageHeight - cover.y1,
+          width: cover.x1 - cover.x0,
+          height: cover.y1 - cover.y0,
+          color: rgb(1, 1, 1),
+          borderWidth: 0,
+        });
+        if (text) {
+          // Shrink if needed so long names stay inside the cell.
+          let drawSize = size;
+          const maxW = Math.max(4, BAUG_FIELD.x1 - BAUG_FIELD.x0 - BAUG_FIELD.padX - 4);
+          while (drawSize > 7 && baugFont.widthOfTextAtSize(text, drawSize) > maxW) {
+            drawSize -= 0.25;
+          }
+          const baselineTop = mid + (drawSize * (ascent - descent)) / 2;
+          page.drawText(text, {
+            x: BAUG_FIELD.x0 + BAUG_FIELD.padX,
+            y: pageHeight - baselineTop,
+            size: drawSize,
+            font: baugFont,
+            color: rgb(0, 0, 0),
+          });
+        }
+      }
+    }
 
     // White-out: session clears (near-full cell) + erase-mode whiteouts (stamp inset).
     const drawWhiteRect = (page, pageHeight, cell, useInset) => {
@@ -2095,6 +2449,32 @@ export function initFill() {
   }
 
   el.toast.addEventListener('click', () => el.toast.classList.add('hidden'));
+
+  if (el.baugOk) {
+    el.baugOk.addEventListener('click', () => {
+      closeBaugEditDialog(el.baugInput ? el.baugInput.value : '');
+    });
+  }
+  if (el.baugCancel) {
+    el.baugCancel.addEventListener('click', () => closeBaugEditDialog(null));
+  }
+  if (el.baugDialog) {
+    el.baugDialog.addEventListener('cancel', (e) => {
+      e.preventDefault();
+      closeBaugEditDialog(null);
+    });
+  }
+  if (el.baugInput) {
+    el.baugInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        closeBaugEditDialog(el.baugInput.value);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeBaugEditDialog(null);
+      }
+    });
+  }
 
   let resizeTimer = 0;
   function scheduleRerender() {

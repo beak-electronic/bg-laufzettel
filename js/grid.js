@@ -100,3 +100,16 @@ export function insetCssPercent(cell, pageWidth = PAGE_WIDTH, pageHeight = PAGE_
     height: ((cell.y1 - cell.y0 - inset * 2) / pageHeight) * 100,
   };
 }
+
+/** Baugruppenbezeichnung value cell (PDF pts, top-left origin) — matches pdf.js drawMetaFields. */
+export const BAUG_FIELD = {
+  x0: 237.8,
+  y0: 113.8,
+  x1: 536.7,
+  y1: 137.8,
+  /** Left pad used when drawing the value (SOLL). */
+  padX: 8.59,
+  fontSize: 12,
+  /** Inset for white cover so cell borders stay visible. */
+  coverInset: 1.25,
+};

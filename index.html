@@ -11,16 +11,16 @@
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c1c1e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="description" content="Baugruppenlaufzettel erzeugen und ausfüllen – offline PWA" />
-  <link rel="manifest" href="manifest.webmanifest?v=68" />
+  <link rel="manifest" href="manifest.webmanifest?v=69" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" type="image/png" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" type="image/png" />
   <link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167.png" type="image/png" />
   <link rel="apple-touch-icon" sizes="152x152" href="apple-touch-icon-152.png" type="image/png" />
   <link rel="apple-touch-icon" sizes="120x120" href="apple-touch-icon-120.png" type="image/png" />
   <link rel="apple-touch-icon-precomposed" href="apple-touch-icon-precomposed.png" type="image/png" />
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=68" />
-  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=68" />
-  <link rel="stylesheet" href="css/app.css?v=68" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=69" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=69" />
+  <link rel="stylesheet" href="css/app.css?v=69" />
   <title>BG Laufzettel</title>
 </head>
 <body>
@@ -51,7 +51,7 @@
 
       <div class="pill" role="group" aria-label="Auftragseingabe">
         <button type="button" class="pill-btn" id="btn-gen-settings" aria-label="Einstellungen" title="Einstellungen">
-          <img class="pill-icon" src="icons/settings_btn.png?v=68" alt="" width="40" height="40" draggable="false" />
+          <img class="pill-icon" src="icons/settings_btn.png?v=69" alt="" width="40" height="40" draggable="false" />
         </button>
         <input
           id="job-input"
@@ -65,7 +65,7 @@
           aria-label="Auftragstext"
         />
         <button type="button" class="pill-btn send" id="btn-send" aria-label="Senden" title="Senden">
-          <img class="pill-icon send-icon" src="icons/send_btn.png?v=68" alt="" width="40" height="40" draggable="false" />
+          <img class="pill-icon send-icon" src="icons/send_btn.png?v=69" alt="" width="40" height="40" draggable="false" />
         </button>
       </div>
 
@@ -346,9 +346,28 @@
     </form>
   </dialog>
 
-  <script src="vendor/pdf-lib.min.js?v=68"></script>
-  <script src="vendor/fontkit.umd.min.js?v=68"></script>
-  <script src="vendor/zxing-library.min.js?v=68"></script>
-  <script type="module" src="js/app.js?v=68"></script>
+
+  <!-- Baugruppenbezeichnung korrigieren (Editor-Modus) -->
+  <dialog id="baug-edit-dialog" class="settings-dialog field-entry-dialog baug-edit-dialog">
+    <form method="dialog" id="baug-edit-form" class="field-entry-form">
+      <header class="settings-header">
+        <h2 id="baug-edit-title">Baugruppenbezeichnung ändern</h2>
+      </header>
+      <div class="settings-body" style="padding:12px 16px 8px">
+        <label class="field-label" for="baug-edit-input">Neuer Text</label>
+        <input type="text" id="baug-edit-input" autocomplete="off" autocorrect="on" autocapitalize="characters" spellcheck="false" placeholder="Baugruppenbezeichnung" />
+        <p class="hint" id="baug-edit-hint">Beim Sichern wird der alte Text weiß überdeckt und der neue geschrieben.</p>
+        <div class="settings-btn-row" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+          <button type="button" class="btn btn-prominent btn-field-action" id="btn-baug-edit-ok">OK</button>
+          <button type="button" class="btn btn-text" id="btn-baug-edit-cancel">Abbrechen</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="vendor/pdf-lib.min.js?v=69"></script>
+  <script src="vendor/fontkit.umd.min.js?v=69"></script>
+  <script src="vendor/zxing-library.min.js?v=69"></script>
+  <script type="module" src="js/app.js?v=69"></script>
 </body>
 </html>

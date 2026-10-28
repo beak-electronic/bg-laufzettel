@@ -13,6 +13,20 @@
   font-style: normal;
   font-display: swap;
 }
+@font-face {
+  font-family: "Calibri";
+  src: url("../fonts/Calibri.subset.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Calibri";
+  src: url("../fonts/Calibri-Bold.subset.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 :root {
   color-scheme: light dark;
   --pink: #dd007a;
@@ -1391,4 +1405,72 @@ body.pen-drawing #main-fill {
 }
 #btn-refresh-pdfs {
   flex: 1 1 100%;
+}
+
+/* Baugruppenbezeichnung edit (Editor-Modus) */
+.hit-cell.hit-baug {
+  background: transparent;
+  border-radius: 2px;
+}
+.hit-cell.hit-baug:hover,
+.hit-cell.hit-baug:focus-visible {
+  background: color-mix(in srgb, #dd007a 12%, transparent);
+  outline: 1.5px solid color-mix(in srgb, #dd007a 55%, transparent);
+  outline-offset: -1px;
+}
+.hit-cell.hit-baug.edited {
+  background: color-mix(in srgb, #dd007a 6%, transparent);
+}
+.baug-edit-btn {
+  position: absolute;
+  z-index: 6;
+  pointer-events: auto;
+  touch-action: manipulation;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #fff;
+  background: #dd007a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+}
+.baug-edit-btn:hover,
+.baug-edit-btn:focus-visible {
+  background: #c0006a;
+  outline: 2px solid color-mix(in srgb, #dd007a 50%, white);
+  outline-offset: 1px;
+}
+.baug-edit-btn svg {
+  display: block;
+  width: 55%;
+  height: 55%;
+}
+.baug-edit-dialog {
+  width: min(520px, 96vw);
+}
+.baug-edit-dialog #baug-edit-input {
+  width: 100%;
+  font-size: 17px;
+  padding: 12px;
+  border: 1px solid rgba(60, 60, 67, 0.18);
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+.baug-edit-dialog .btn-field-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 7.5rem;
+  min-height: 2.75rem;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 12px;
+  margin-top: 0;
+  flex: 0 0 auto;
 }
