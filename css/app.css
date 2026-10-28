@@ -1474,3 +1474,35 @@ body.pen-drawing #main-fill {
   margin-top: 0;
   flex: 0 0 auto;
 }
+
+/* Update-Hinweis nach Service-Worker-Wechsel (kein automatisches Neuladen mitten in einer Ansicht) */
+.update-hint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1c1c1e;
+  font-size: 14px;
+  border: 1px solid rgba(60, 60, 67, 0.18);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.update-hint button {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #dd007a;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.update-hint button:hover {
+  filter: brightness(0.95);
+}

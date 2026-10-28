@@ -57,3 +57,10 @@ No LibreOffice / template / output-folder paths (browser PWA).
 - Home **Scannen** UI + settings catalog (folder picker when available, file multi-pick, clear).
 - Cache `bg-laufzettel-generator-v58`; footer Version **1.4**.
 - Camera needs secure context (HTTPS/localhost) + permission; catalog must be filled before auto-open.
+
+## 2026-10-28 — v1.5 Update-Hinweis (Geräte-Mechanik)
+
+- Footer Version **1.5**; cache token `bg-laufzettel-generator-v70` (`?v=70` asset busts).
+- Ported Geräte Laufzettel in-app update UX: `controllerchange` → banner „Update verfügbar“ / „Neu laden“ only on home (also inside Einstellungen dialog); no auto-reload while fill/scan open; silent reload only if idle on home < 20 s and no user interaction yet.
+- `registerSW`: `reg.update()` after register.
+- SW: keep `skipWaiting` + `clients.claim` (as Geräte); network-first for navigation/code, cache-first for fonts/images (`ignoreSearch` for `?v=`).

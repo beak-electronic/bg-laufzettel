@@ -4,7 +4,7 @@ Offline Progressive Web App: Baugruppenlaufzettel erzeugen, stempeln und per Sca
 
 **Live:** https://beak-electronic.github.io/bg-laufzettel/
 
-**Version:** 1.4  
+**Version:** 1.5  
 **©** BEAK electronic engineering GmbH & Co. KG
 
 ## Features

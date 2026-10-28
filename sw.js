@@ -1,5 +1,5 @@
 /* BG Laufzettel Generator – offline app shell (generate + fill + scan) */
-const CACHE = 'bg-laufzettel-generator-v69';
+const CACHE = 'bg-laufzettel-generator-v70';
 const ASSETS = [
   './',
   './index.html',
@@ -44,9 +44,60 @@ const ASSETS = [
   './icons/bg-home-512.png',
 ];
 
+function isNavigationRequest(request) {
+  if (request.mode === 'navigate') return true;
+  if (request.destination === 'document') return true;
+  if (request.destination && request.destination !== '') return false;
+  const accept = request.headers.get('accept') || '';
+  return accept.includes('text/html');
+}
+
+function isIconOrTouchAsset(url) {
+  const p = url.pathname || '';
+  return (
+    /apple-touch-icon/i.test(p) ||
+    /\/favicon\.png$/i.test(p) ||
+    /\/icons\/icon-\d+/i.test(p) ||
+    /\/icons\/bg-home-/i.test(p) ||
+    /\/icons\/apple-touch/i.test(p)
+  );
+}
+
+function isCodeAsset(url) {
+  return /\.(m?js|css|json|webmanifest)$/i.test(url.pathname || '');
+}
+
+function isServiceWorkerScript(url) {
+  return /\/sw\.js$/i.test(url.pathname);
+}
+
+/** Cache match that ignores ?v= cache-bust query strings. */
+function matchCache(request) {
+  return caches.match(request, { ignoreSearch: true });
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    (async () => {
+      const cache = await caches.open(CACHE);
+      // Add individually so one 404 does not abort the whole install.
+      await Promise.all(
+        ASSETS.map(async (url) => {
+          try {
+            const res = await fetch(url, { cache: 'reload' });
+            if (!res.ok) {
+              console.warn('[SW] skip asset (HTTP ' + res.status + '):', url);
+              return;
+            }
+            await cache.put(url, res);
+          } catch (err) {
+            console.warn('[SW] skip missing asset:', url, err);
+          }
+        })
+      );
+      // Like Geräte: activate immediately; client shows „Update verfügbar“ / auto-reload on home.
+      await self.skipWaiting();
+    })()
   );
 });
 
@@ -62,19 +113,77 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req)
+  let url;
+  try {
+    url = new URL(req.url);
+  } catch (_) {
+    return;
+  }
+  if (url.origin !== self.location.origin) return;
+
+  // Never intercept Home Screen / PWA icons — iOS Safari must hit the network/CDN.
+  if (isIconOrTouchAsset(url)) return;
+
+  // Navigation + SW script: network-first; HTML shell fallback only for navigations.
+  if (isNavigationRequest(req) || isServiceWorkerScript(url)) {
+    event.respondWith(
+      fetch(req)
         .then((res) => {
-          const url = new URL(req.url);
-          if (res.ok && url.origin === self.location.origin) {
+          if (res.ok && isNavigationRequest(req)) {
+            const clone = res.clone();
+            caches.open(CACHE).then((cache) => {
+              cache.put('./index.html', clone);
+              cache.put('./', clone.clone());
+            });
+          }
+          return res;
+        })
+        .catch(async () => {
+          if (isNavigationRequest(req)) {
+            const shell = (await matchCache('./index.html')) || (await matchCache('./'));
+            if (shell) return shell;
+          }
+          return new Response('', { status: 503, statusText: 'Offline' });
+        })
+    );
+    return;
+  }
+
+  // Code/data (JS, MJS, CSS, JSON, manifest): network-first, cache fallback offline.
+  if (isCodeAsset(url)) {
+    event.respondWith(
+      fetch(req, { cache: 'no-cache' })
+        .then((res) => {
+          if (res.ok) {
             const clone = res.clone();
             caches.open(CACHE).then((cache) => cache.put(req, clone));
           }
           return res;
         })
-        .catch(() => caches.match('./index.html'));
+        .catch(async () => (await matchCache(req)) || new Response('', { status: 503, statusText: 'Offline' }))
+    );
+    return;
+  }
+
+  // Other same-origin assets (fonts, images): cache-first (ignoreSearch for ?v=), then network.
+  event.respondWith(
+    matchCache(req).then((cached) => {
+      if (cached) return cached;
+      return fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE).then((cache) => cache.put(req, clone));
+          }
+          return res;
+        })
+        .catch(() =>
+          new Response('', {
+            status: 503,
+            statusText: 'Offline',
+            headers: { 'Content-Type': 'text/plain' },
+          })
+        );
     })
   );
 });

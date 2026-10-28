@@ -11,16 +11,16 @@
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c1c1e" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="description" content="Baugruppenlaufzettel erzeugen und ausfüllen – offline PWA" />
-  <link rel="manifest" href="manifest.webmanifest?v=69" />
+  <link rel="manifest" href="manifest.webmanifest?v=70" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" type="image/png" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" type="image/png" />
   <link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167.png" type="image/png" />
   <link rel="apple-touch-icon" sizes="152x152" href="apple-touch-icon-152.png" type="image/png" />
   <link rel="apple-touch-icon" sizes="120x120" href="apple-touch-icon-120.png" type="image/png" />
   <link rel="apple-touch-icon-precomposed" href="apple-touch-icon-precomposed.png" type="image/png" />
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=69" />
-  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=69" />
-  <link rel="stylesheet" href="css/app.css?v=69" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=70" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=70" />
+  <link rel="stylesheet" href="css/app.css?v=70" />
   <title>BG Laufzettel</title>
 </head>
 <body>
@@ -31,6 +31,80 @@
           || window.matchMedia('(display-mode: standalone)').matches
           || window.matchMedia('(display-mode: window-controls-overlay)').matches;
         if (standalone) document.documentElement.setAttribute('data-standalone', '1');
+      } catch (e) {}
+    })();
+    // Nach einem Update übernimmt der neue Service Worker (skipWaiting + clients.claim).
+    // Hinweis „Update verfügbar“ / „Neu laden“ NUR im Hauptmenü (Startbildschirm, auch im
+    // dort geöffneten Dialog Einstellungen). Ist ein PDF offen (Ausfüllen) oder Scannen
+    // aktiv, wird das Update nur vorgemerkt – kein Hinweis, kein Neuladen; erst bei
+    // Rückkehr ins Hauptmenü erscheint der Hinweis.
+    // Still neu laden nur, solange noch niemand interagiert hat (< 20 s) und das Hauptmenü
+    // ohne offenen Dialog sichtbar ist.
+    (function () {
+      try {
+        if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+        var t0 = Date.now(), pending = false, acted = false, bar = null;
+        var HOME_DIALOGS = { 'gen-settings-dialog': 1 };
+        var mark = function () { acted = true; };
+        ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
+          window.addEventListener(ev, mark, { capture: true, passive: true });
+        });
+        var shown = function (id) {
+          var e = document.getElementById(id);
+          return !!e && !e.classList.contains('hidden') && !e.hidden;
+        };
+        // Hauptmenü sichtbar, keine PDF-/Scan-Ansicht und kein fremder Dialog offen.
+        var onMainMenu = function () {
+          if (!shown('home')) return false;
+          if (shown('fill-mode') || shown('scan-view')) return false;
+          var bc = document.body.classList;
+          if (bc.contains('fill-open') || bc.contains('scan-open')) return false;
+          var open = document.querySelectorAll('dialog[open]');
+          for (var i = 0; i < open.length; i++) if (!HOME_DIALOGS[open[i].id]) return false;
+          return true;
+        };
+        var idleOnHome = function () {
+          return onMainMenu() && !document.querySelector('dialog[open]');
+        };
+        var makeBar = function () {
+          bar = document.createElement('div');
+          bar.id = 'update-hint';
+          bar.className = 'update-hint';
+          bar.setAttribute('role', 'status');
+          bar.innerHTML = '<span>Update verfügbar</span><button type="button">Neu laden</button>';
+          bar.querySelector('button').addEventListener('click', function () {
+            // Sicherheitsnetz: nie neu laden, solange keine Hauptmenü-Ansicht offen ist.
+            if (onMainMenu()) location.reload();
+            else sync();
+          });
+        };
+        // Hinweis anzeigen/ausblenden je nach Ansicht. Ein modaler Dialog macht den Rest
+        // der Seite inaktiv – Hinweis daher im offenen (Hauptmenü-)Dialog, sonst im body.
+        var sync = function () {
+          if (!pending) return;
+          if (!onMainMenu()) {
+            if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+            return;
+          }
+          if (!bar) makeBar();
+          var host = document.querySelector('dialog[open]') || document.body;
+          if (bar.parentNode !== host) host.appendChild(bar);
+        };
+        var later = function () { setTimeout(sync, 0); };
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (pending) return;
+          pending = true;
+          if (!acted && Date.now() - t0 < 20000 && idleOnHome()) { location.reload(); return; }
+          sync();
+          // Ansichtswechsel (PDF schließen, Zurück aus Scan, Dialog auf/zu) beobachten.
+          try {
+            new MutationObserver(later).observe(document.body, {
+              subtree: true, attributes: true, attributeFilter: ['class', 'open', 'hidden']
+            });
+          } catch (e) {}
+          document.addEventListener('click', later, true);
+          document.addEventListener('close', later, true);
+        });
       } catch (e) {}
     })();
   </script>
@@ -51,7 +125,7 @@
 
       <div class="pill" role="group" aria-label="Auftragseingabe">
         <button type="button" class="pill-btn" id="btn-gen-settings" aria-label="Einstellungen" title="Einstellungen">
-          <img class="pill-icon" src="icons/settings_btn.png?v=69" alt="" width="40" height="40" draggable="false" />
+          <img class="pill-icon" src="icons/settings_btn.png?v=70" alt="" width="40" height="40" draggable="false" />
         </button>
         <input
           id="job-input"
@@ -65,7 +139,7 @@
           aria-label="Auftragstext"
         />
         <button type="button" class="pill-btn send" id="btn-send" aria-label="Senden" title="Senden">
-          <img class="pill-icon send-icon" src="icons/send_btn.png?v=69" alt="" width="40" height="40" draggable="false" />
+          <img class="pill-icon send-icon" src="icons/send_btn.png?v=70" alt="" width="40" height="40" draggable="false" />
         </button>
       </div>
 
@@ -100,7 +174,7 @@
         <button type="button" class="btn btn-prominent" id="btn-go-scan">Scannen</button>
       </section>
       <p class="home-footer">
-        Version 1.4<br />
+        Version 1.5<br />
         © BEAK electronic engineering GmbH &amp; Co. KG
       </p>
     </div>
@@ -365,9 +439,9 @@
     </form>
   </dialog>
 
-  <script src="vendor/pdf-lib.min.js?v=69"></script>
-  <script src="vendor/fontkit.umd.min.js?v=69"></script>
-  <script src="vendor/zxing-library.min.js?v=69"></script>
-  <script type="module" src="js/app.js?v=69"></script>
+  <script src="vendor/pdf-lib.min.js?v=70"></script>
+  <script src="vendor/fontkit.umd.min.js?v=70"></script>
+  <script src="vendor/zxing-library.min.js?v=70"></script>
+  <script type="module" src="js/app.js?v=70"></script>
 </body>
 </html>
